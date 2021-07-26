@@ -221,6 +221,10 @@ func compareSnapChange(t *testing.T, lastHeightOfSpan uint64) {
 	}
 	previousHeader, _ := borGetHeaderAtHeight(t, client, lastHeightOfSpan-64) // span 2694
 	previousSnap, _ := borGetSnapshotAtHash(t, previousHeader.Hash())
+	err = previousSnap.ValidatorSet.updateTotalVotingPower()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	targetHeader, _ := borGetHeaderAtHeight(t, client, lastHeightOfSpan) // also span 2694, but contains validators of span 2695
 	targetSnap, _ := borGetSnapshotAtHash(t, targetHeader.Hash())
