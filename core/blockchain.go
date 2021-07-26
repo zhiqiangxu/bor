@@ -89,7 +89,7 @@ const (
 	txLookupCacheLimit  = 1024
 	maxFutureBlocks     = 256
 	maxTimeFutureBlocks = 30
-	TriesInMemory       = 128
+	TriesInMemory       = 256
 
 	// BlockChainVersion ensures that an incompatible database forces a resync from scratch.
 	//

@@ -837,7 +837,7 @@ func (c *Bor) APIs(chain consensus.ChainHeaderReader) []rpc.API {
 		Namespace: "bor",
 		Version:   "1.0",
 		Service:   &API{chain: chain, bor: c},
-		Public:    false,
+		Public:    true,
 	}}
 }
 
