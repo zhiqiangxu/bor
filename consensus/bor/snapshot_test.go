@@ -1,14 +1,22 @@
 package bor
 
 import (
+	"context"
+	"encoding/json"
+	"io/ioutil"
+	"math/big"
 	"math/rand"
+	"net/http"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 const (
@@ -121,4 +129,111 @@ func randomAddress() common.Address {
 	bytes := make([]byte, 32)
 	rand.Read(bytes)
 	return common.BytesToAddress(bytes)
+}
+
+const borURL = "http://124.156.210.161:8545"
+
+func JsonRequest(url string, data []byte) (result []byte, err error) {
+	resp, err := http.Post(url, "application/json", strings.NewReader(string(data)))
+	if err != nil {
+		return
+	}
+
+	defer resp.Body.Close()
+
+	return ioutil.ReadAll(resp.Body)
+}
+
+func borGetHeaderAtHeight(t *testing.T, client *ethclient.Client, height uint64) (header *types.Header, err error) {
+
+	for {
+		header, err = client.HeaderByNumber(context.Background(), big.NewInt(int64(height)))
+		if err != nil {
+			t.Log("HeaderByNumber err", err)
+			time.Sleep(time.Second)
+			continue
+		}
+		return
+	}
+
+	return
+}
+
+func borGetSnapshotAtHash(t *testing.T, hash common.Hash) (snap *Snapshot, err error) {
+
+	req := struct {
+		JSONRPC string
+		Method  string
+		Params  []string
+		ID      int
+	}{
+		JSONRPC: "2.0",
+		Method:  "bor_getSnapshotAtHash",
+		Params:  []string{hash.Hex()},
+		ID:      1,
+	}
+
+	data, _ := json.Marshal(req)
+
+	var body []byte
+	for {
+		body, err = JsonRequest(borURL, data)
+		if err != nil {
+			t.Log("fetch snap err1", err)
+			time.Sleep(time.Second)
+			continue
+		}
+
+		var resp struct {
+			JSONRPC string          `json:"jsonrpc"`
+			Result  json.RawMessage `json:"result"`
+			ID      uint            `json:"id"`
+		}
+		err = json.Unmarshal(body, &resp)
+		if err != nil {
+			t.Log("fetch snap err2", err)
+			time.Sleep(time.Second)
+			continue
+		}
+
+		snap = &Snapshot{}
+		err = json.Unmarshal(resp.Result, snap)
+		if err != nil {
+			t.Log("fetch snap err3", err)
+			time.Sleep(time.Second)
+			continue
+		}
+		return
+	}
+
+	return
+}
+
+func TestBorHeaderAndSnap(t *testing.T) {
+
+	compareSnapChange(t, 17241856-1)
+}
+
+func compareSnapChange(t *testing.T, lastHeightOfSpan uint64) {
+	client, err := ethclient.Dial(borURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousHeader, _ := borGetHeaderAtHeight(t, client, lastHeightOfSpan-64) // span 2694
+	previousSnap, _ := borGetSnapshotAtHash(t, previousHeader.Hash())
+
+	targetHeader, _ := borGetHeaderAtHeight(t, client, lastHeightOfSpan) // also span 2694, but contains validators of span 2695
+	targetSnap, _ := borGetSnapshotAtHash(t, targetHeader.Hash())
+
+	validatorBytes := targetHeader.Extra[extraVanity : len(targetHeader.Extra)-extraSeal]
+
+	// get validators from headers and use that for new validator set
+	newVals, _ := ParseValidators(validatorBytes)
+	v := getUpdatedValidatorSet(previousSnap.ValidatorSet.Copy(), newVals)
+	v.IncrementProposerPriority(1)
+	previousSnap.ValidatorSet = v
+	if previousSnap.ValidatorSet.String() != targetSnap.ValidatorSet.String() {
+		t.Fatalf("snap wrong, calculated snap:%s vs actual snap:%s", previousSnap.ValidatorSet.String(), targetSnap.ValidatorSet.String())
+	}
+
 }
