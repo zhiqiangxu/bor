@@ -297,6 +297,7 @@ func NewParallelExecutor(tasks []ExecTask, profile bool, metadata bool, numProcs
 
 // nolint: gocognit
 func (pe *ParallelExecutor) Prepare() error {
+	log.Info("start parallel prepare")
 	prevSenderTx := make(map[common.Address]int)
 
 	for i, t := range pe.tasks {
@@ -379,7 +380,9 @@ func (pe *ParallelExecutor) Prepare() error {
 	pe.settleWg.Add(1)
 
 	go func() {
+		log.Info("start parallel prepare settle")
 		for t := range pe.chSettle {
+			log.Info("start do settle")
 			pe.tasks[t].Settle()
 		}
 

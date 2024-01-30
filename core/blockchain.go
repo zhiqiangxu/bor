@@ -553,6 +553,7 @@ func (bc *BlockChain) ProcessBlock(block *types.Block, parent *types.Header) (ty
 		go func() {
 			statedb.StartPrefetcher("chain")
 			receipts, logs, usedGas, err := bc.processor.Process(block, statedb, bc.vmConfig, ctx)
+			time.Sleep(time.Second * 10)
 			resultChan <- Result{receipts, logs, usedGas, err, statedb, blockExecutionSerialCounter}
 		}()
 	}

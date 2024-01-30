@@ -197,7 +197,7 @@ func TestParallelBlock(t *testing.T) {
 	t.Parallel()
 	log.Root().SetHandler(log.StdoutHandler)
 
-	db, _, blockchain, err := newCanonical(ethash.NewFaker(), 10, true)
+	db, _, blockchain, err := newCanonical(ethash.NewFaker(), 1, true)
 	blockchain.parallelProcessor = NewParallelStateProcessor(blockchain.chainConfig, blockchain, blockchain.engine)
 
 	if err != nil {
@@ -216,7 +216,7 @@ func TestParallelBlock(t *testing.T) {
 	})
 	_, err = blockchain.InsertChain(blocks)
 	if err != nil {
-		t.Fatalf("failed to prepare gas fee chain: %v", err)
+		t.Fatalf("failed to prepare gas fee: %v", err)
 	}
 
 	prevBlock = blockchain.GetBlockByHash(blockchain.CurrentBlock().Hash())
