@@ -18,6 +18,7 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"time"
@@ -173,10 +174,23 @@ func (task *ExecutionTask) Dependencies() []int {
 	return task.dependencies
 }
 
+func JsonString(v interface{}) string {
+	buf, err := json.Marshal(v)
+	if err != nil {
+		panic("json string err")
+	}
+	return string(buf)
+}
+
 func (task *ExecutionTask) Settle() {
 	task.finalStateDB.SetTxContext(task.tx.Hash(), task.index)
 
 	coinbaseBalance := task.finalStateDB.GetBalance(task.coinbase)
+
+	writeList := task.statedb.MVWriteList()
+	log.Info("settle for tx", "hash", task.tx.Hash())
+	log.Info("write list", "list", JsonString(writeList))
+	log.Info("full write list", "full", JsonString(task.statedb.MVFullWriteList()))
 
 	task.finalStateDB.ApplyMVWriteSet(task.statedb.MVFullWriteList())
 
@@ -298,6 +312,7 @@ func (p *ParallelStateProcessor) Process(block *types.Block, statedb *state.Stat
 	}
 
 	blockContext := NewEVMBlockContext(header, p.bc, nil)
+	log.Error("begin parallel process block")
 
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {

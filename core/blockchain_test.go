@@ -17,8 +17,10 @@
 package core
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 	"math/rand"
 	"os"
@@ -189,6 +191,63 @@ func testBlockChainImport(chain types.Blocks, blockchain *BlockChain) error {
 	}
 
 	return nil
+}
+
+func TestParallelBlock(t *testing.T) {
+	t.Parallel()
+	log.Root().SetHandler(log.StdoutHandler)
+
+	db, _, blockchain, err := newCanonical(ethash.NewFaker(), 10, true)
+	blockchain.parallelProcessor = NewParallelStateProcessor(blockchain.chainConfig, blockchain, blockchain.engine)
+
+	if err != nil {
+		t.Fatalf("failed to make new canonical chain: %v", err)
+	}
+
+	defer blockchain.Stop()
+
+	prevBlock := blockchain.GetBlockByHash(blockchain.CurrentBlock().Hash())
+	privKey, err := crypto.HexToECDSA("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
+	user := crypto.PubkeyToAddress(privKey.PublicKey)
+	fmt.Println("user address: ", user) // 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+	contractAddr := crypto.CreateAddress(user, 0)
+	blocks, _ := GenerateChain(blockchain.chainConfig, prevBlock, ethash.NewFaker(), db, 10, func(i int, b *BlockGen) {
+		b.SetCoinbase(user)
+	})
+	_, err = blockchain.InsertChain(blocks)
+	if err != nil {
+		t.Fatalf("failed to prepare gas fee chain: %v", err)
+	}
+
+	prevBlock = blockchain.GetBlockByHash(blockchain.CurrentBlock().Hash())
+	blocks, _ = GenerateChain(blockchain.chainConfig, prevBlock, ethash.NewFaker(), db, 1, func(i int, b *BlockGen) {
+		b.SetCoinbase(user)
+		deploy, err := hex.DecodeString("608060405234801561001057600080fd5b5061027b806100206000396000f3fe608060405234801561001057600080fd5b50600436106100415760003560e01c80636c1f222f146100465780638381f58a14610050578063d09de08a1461006b575b600080fd5b61004e610073565b005b61005960005481565b60405190815260200160405180910390f35b61004e610194565b600260005461008291906101db565b156100c35760405162461bcd60e51b815260206004820152600c60248201526b36bab9ba1031329032bb32b760a11b60448201526064015b60405180910390fd5b60026000808282546100d59190610213565b90915550506000546040519081527fbb2073abfbcbf9d6008fe2fb9579ca51fdc044d0d7d064eec5cff499fb7c60f39060200160405180910390a1306001600160a01b031663d09de08a6040518163ffffffff1660e01b8152600401600060405180830381600087803b15801561014b57600080fd5b505af192505050801561015c575060015b610192573d80801561018a576040519150601f19603f3d011682016040523d82523d6000602084013e61018f565b606091505b50505b565b6000805490806101a38361022c565b909155505060405162461bcd60e51b81526020600482015260086024820152676e6f20777269746560c01b60448201526064016100ba565b6000826101f857634e487b7160e01b600052601260045260246000fd5b500690565b634e487b7160e01b600052601160045260246000fd5b80820180821115610226576102266101fd565b92915050565b60006001820161023e5761023e6101fd565b506001019056fea264697066735822122069bca2cda44849d963dbe634e02a72898c91efbdbdf8d7f35827b64e70092c6964736f6c63430008160033")
+		if err != nil {
+			panic("invalid contract")
+		}
+		invoke, _ := hex.DecodeString("6c1f222f")
+
+		signer := types.LatestSigner(blockchain.chainConfig)
+
+		gasPrice := big.NewInt(1000000000)
+		b.txs = append(b.txs, types.NewContractCreation(0, nil, 1000000, gasPrice, deploy))
+		b.txs = append(b.txs, types.NewTransaction(1, contractAddr, nil, 1000000, gasPrice, invoke))
+		b.txs = append(b.txs, types.NewTransaction(2, contractAddr, nil, 1000000, gasPrice, invoke))
+		b.txs = append(b.txs, types.NewTransaction(3, contractAddr, nil, 1000000, gasPrice, invoke))
+		for i, tx := range b.txs {
+			b.txs[i], err = types.SignTx(tx, signer, privKey)
+			if err != nil {
+				panic("sign err")
+			}
+		}
+	})
+
+	receipts, _, _, _, err := blockchain.ProcessBlock(blocks[0], prevBlock.Header())
+	//receipts := blockchain.GetReceiptsByHash(blocks[0].Hash())
+	fmt.Println("err: ", err)
+
+	fmt.Println("block receipt: ", JsonString(receipts))
 }
 
 func TestParallelBlockChainImport(t *testing.T) {
